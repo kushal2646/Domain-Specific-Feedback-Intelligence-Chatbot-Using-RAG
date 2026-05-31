@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Intelligence RAG Chatbot</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-brain-circuit"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>WorkSync</h1>
+                    <span>Feedback Intelligence RAG</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-tab="chat">
+                    <i class="fa-solid fa-comments"></i>
+                    <span>Intelligence Chat</span>
+                </button>
+                <button class="nav-btn" data-tab="kb">
+                    <i class="fa-solid fa-database"></i>
+                    <span>Knowledge Base</span>
+                </button>
+                <button class="nav-btn" data-tab="admin">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Admin Panel</span>
+                </button>
+                <button class="nav-btn" data-tab="evaluation">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Evaluation Metrics</span>
+                </button>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="connection-status connected">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Neon PostgreSQL Connected</span>
+                </div>
+                <div class="system-info">
+                    <i class="fa-solid fa-server"></i> Llama 3.3 Active
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="main-content">
+            
+            <!-- TOP HEADER -->
+            <header class="app-header">
+                <div class="header-title">
+                    <h2 id="tab-title">Intelligence Chat</h2>
+                    <p id="tab-subtitle">Answer customer feedback questions based on the verified database context.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="action-btn" id="quick-seed-btn">
+                        <i class="fa-solid fa-seedling"></i> Quick Seed (100+ Records)
+                    </button>
+                    <div class="user-profile">
+                        <div class="avatar">AD</div>
+                        <span>Workspace Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- VIEW CONTAINER -->
+            <div class="view-container">
+                
+                <!-- 1. CHAT VIEW -->
+                <section class="view-panel active" id="view-chat">
+                    <div class="chat-layout">
+                        <div class="chat-messages-container">
+                            <div class="chat-log" id="chat-log">
+                                <!-- Welcome Message -->
+                                <div class="message assistant-msg">
+                                    <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
+                                    <div class="msg-bubble">
+                                        <p>Hello! I am your <strong>Domain-Specific Feedback Intelligence Chatbot</strong>.</p>
+                                        <p>Ask me any question about WorkSync's billing, account support, integrations, UI settings, or mobile apps. I will search the database and construct a precise, synthesized answer grounded strictly in verified feedback records.</p>
+                                        <div class="quick-hints">
+                                            <span>Try asking:</span>
+                                            <button class="hint-btn">How do I reset my password?</button>
+                                            <button class="hint-btn">What is the API rate limit?</button>
+                                            <button class="hint-btn">My billing page is showing a blank screen</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="chat-input-wrapper">
+                                <form id="chat-form">
+                                    <textarea id="chat-input" placeholder="Type a customer question here (e.g. 'Is there a dark mode?')..." rows="1" required></textarea>
+                                    <button type="submit" class="send-btn" id="send-btn">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <!-- Chat Retrieval Settings Sidebar -->
+                        <div class="chat-settings-sidebar">
+                            <h3><i class="fa-solid fa-gears"></i> Retrieval Parameters</h3>
+                            
+                            <div class="setting-group">
+                                <label for="setting-top-k">Top K Documents: <span id="val-top-k">5</span></label>
+                                <input type="range" id="setting-top-k" min="1" max="10" value="5" step="1">
+                                <span class="setting-desc">Number of relevant feedback items to retrieve as context.</span>
+                            </div>
+                            
+                            <div class="setting-group">
+                                <label for="setting-threshold">Relevance Threshold: <span id="val-threshold">0.25</span></label>
+                                <input type="range" id="setting-threshold" min="0.0" max="0.8" value="0.25" step="0.05">
+                                <span class="setting-desc">Minimum combined score to include a record in context.</span>
+                            </div>
+                            
+                            <div class="divider"></div>
+                            
+                            <h4>Hybrid Search Weights</h4>
+                            
+                            <div class="setting-group">
+                                <label for="setting-w-semantic">Semantic (pgvector): <span id="val-w-semantic">50%</span></label>
+                                <input type="range" id="setting-w-semantic" min="0" max="1" value="0.5" step="0.05">
+                            </div>
+                            
+                            <div class="setting-group">
+                                <label for="setting-w-text">Question Keyword: <span id="val-w-text">30%</span></label>
+                                <input type="range" id="setting-w-text" min="0" max="1" value="0.3" step="0.05">
+                            </div>
+                            
+                            <div class="setting-group">
+                                <label for="setting-w-tag">Tag Keyword: <span id="val-w-tag">20%</span></label>
+                                <input type="range" id="setting-w-tag" min="0" max="1" value="0.2" step="0.05">
+                            </div>
+                            
+                            <div class="weight-validation-warning" id="weights-warning" style="display: none;">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Weights should sum to 100% (currently <span id="weights-sum">100</span>%)
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. KNOWLEDGE BASE VIEW -->
+                <section class="view-panel" id="view-kb">
+                    <div class="kb-actions-bar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="kb-search-input" placeholder="Search questions or tags...">
+                        </div>
+                        <div class="kb-summary-stat">
+                            Total Records: <strong id="kb-total-count">0</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="kb-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">ID</th>
+                                    <th style="width: 30%;">Question</th>
+                                    <th>Answer</th>
+                                    <th style="width: 20%;">Tags</th>
+                                    <th style="width: 120px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kb-table-body">
+                                <tr>
+                                    <td colspan="5" class="loading-cell">
+                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading knowledge base...
+                                    </td>
+                                end</tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="pagination-footer">
+                        <button class="pag-btn" id="pag-prev" disabled><i class="fa-solid fa-angle-left"></i> Previous</button>
+                        <span class="pag-info" id="pag-info">Page 1 of 1</span>
+                        <button class="pag-btn" id="pag-next" disabled>Next <i class="fa-solid fa-angle-right"></i></button>
+                    </div>
+                </section>
+
+                <!-- 3. ADMIN PANEL VIEW -->
+                <section class="view-panel" id="view-admin">
+                    <div class="admin-grid">
+                        
+                        <!-- Add/Edit Form -->
+                        <div class="glass-card admin-form-card">
+                            <h3 id="form-card-title"><i class="fa-solid fa-plus-circle"></i> Add QA Record</h3>
+                            <form id="record-form">
+                                <input type="hidden" id="record-id">
+                                
+                                <div class="form-group">
+                                    <label for="form-question">Question</label>
+                                    <textarea id="form-question" rows="3" placeholder="Enter customer question..." required></textarea>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="form-answer">Verified Answer</label>
+                                    <textarea id="form-answer" rows="5" placeholder="Enter verified support answer..." required></textarea>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="form-tags">Tags (Comma-separated)</label>
+                                    <input type="text" id="form-tags" placeholder="Leave blank to auto-generate using Groq Llama 3...">
+                                    <span class="field-help">If empty, Groq will generate 4-8 descriptive lowercase tags automatically.</span>
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button type="submit" class="primary-btn" id="form-submit-btn">
+                                        <i class="fa-solid fa-save"></i> Ingest Record
+                                    </button>
+                                    <button type="button" class="secondary-btn" id="form-cancel-btn" style="display: none;">
+                                        Cancel Edit
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <!-- Bulk Actions and Upload -->
+                        <div class="admin-right-column">
+                            <!-- CSV Upload -->
+                            <div class="glass-card file-upload-card">
+                                <h3><i class="fa-solid fa-file-csv"></i> CSV Ingestion</h3>
+                                <p class="section-desc">Batch upload feedback records. The file must contain headers: <code>question,answer</code>.</p>
+                                
+                                <div class="drag-drop-area" id="drag-drop-area">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                    <p>Drag and drop your CSV file here, or <span class="browse-link">browse</span></p>
+                                    <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
+                                </div>
+                                <div class="file-info" id="file-info" style="display: none;">
+                                    <i class="fa-solid fa-file-lines"></i> <span id="file-name">filename.csv</span>
+                                    <button class="remove-file-btn" id="remove-file-btn"><i class="fa-solid fa-xmark"></i></button>
+                                </div>
+                                
+                                <button class="primary-btn w-full" id="upload-csv-btn" disabled>
+                                    <i class="fa-solid fa-upload"></i> Process and Ingest CSV
+                                </button>
+                                
+                                <div class="csv-template-link">
+                                    <a href="#" id="download-template-link"><i class="fa-solid fa-download"></i> Download CSV Template</a>
+                                </div>
+                            </div>
+                            
+                            <!-- System Maintenance -->
+                            <div class="glass-card system-maintenance-card">
+                                <h3><i class="fa-solid fa-triangle-exclamation"></i> System Actions</h3>
+                                <p class="section-desc">Seed sample feedback datasets or reset the PostgreSQL database tables.</p>
+                                
+                                <div class="maintenance-actions">
+                                    <button class="action-btn-green" id="seed-db-btn">
+                                        <i class="fa-solid fa-seedling"></i> Seed 100+ Default Records
+                                    </button>
+                                    <button class="action-btn-danger" id="reset-db-btn">
+                                        <i class="fa-solid fa-trash-can"></i> Reset Database (Wipe All Tables)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. EVALUATION VIEW -->
+                <section class="view-panel" id="view-evaluation">
+                    <div class="evaluation-actions-bar">
+                        <button class="primary-btn" id="run-eval-btn">
+                            <i class="fa-solid fa-play"></i> Run Batch Evaluation (10 Test Queries)
+                        </button>
+                        <div class="eval-loader" id="eval-loader" style="display: none;">
+                            <i class="fa-solid fa-spinner fa-spin"></i> Running evaluation on Llama 3 Judge... (may take up to 30s)
+                        </div>
+                    </div>
+                    
+                    <!-- Metrics Cards Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-icon blue"><i class="fa-solid fa-crosshairs"></i></div>
+                            <div class="metric-info">
+                                <h4>Retrieval Accuracy</h4>
+                                <h2 id="metric-accuracy">0%</h2>
+                                <p>Proportion of queries finding target doc</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon cyan"><i class="fa-solid fa-bullseye"></i></div>
+                            <div class="metric-info">
+                                <h4>Precision @ K</h4>
+                                <h2 id="metric-precision">0.00</h2>
+                                <p>Fraction of retrieved docs that are target</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon purple"><i class="fa-solid fa-rotate-left"></i></div>
+                            <div class="metric-info">
+                                <h4>Recall @ K</h4>
+                                <h2 id="metric-recall">0%</h2>
+                                <p>Fraction of target docs successfully retrieved</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon pink"><i class="fa-solid fa-chart-line-up"></i></div>
+                            <div class="metric-info">
+                                <h4>Avg Similarity</h4>
+                                <h2 id="metric-similarity">0.00</h2>
+                                <p>Mean cosine score of context docs</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Generation Quality Cards Grid (LLM Judge) -->
+                    <div class="quality-grid">
+                        <div class="quality-card">
+                            <div class="score-dial">
+                                <span class="score-val" id="quality-relevance">0.0</span>
+                                <span class="score-max">/ 5</span>
+                            </div>
+                            <div class="quality-info">
+                                <h4>Answer Relevance</h4>
+                                <p>Is the response directly answering the user query without fluff?</p>
+                            </div>
+                        </div>
+                        <div class="quality-card">
+                            <div class="score-dial">
+                                <span class="score-val" id="quality-correctness">0.0</span>
+                                <span class="score-max">/ 5</span>
+                            </div>
+                            <div class="quality-info">
+                                <h4>Answer Correctness</h4>
+                                <p>Does the synthesized answer factually match the database record?</p>
+                            </div>
+                        </div>
+                        <div class="quality-card">
+                            <div class="score-dial">
+                                <span class="score-val" id="quality-completeness">0.0</span>
+                                <span class="score-max">/ 5</span>
+                            </div>
+                            <div class="quality-info">
+                                <h4>Answer Completeness</h4>
+                                <p>Does it cover all aspects and details defined in the record?</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Charts Panel -->
+                    <div class="charts-row">
+                        <div class="glass-card chart-card">
+                            <h3><i class="fa-solid fa-chart-bar"></i> Retrieval Performance</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="retrievalChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="glass-card chart-card">
+                            <h3><i class="fa-solid fa-chart-pie"></i> Answer Generation Quality</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="qualityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Detailed Evaluation Runs Logs -->
+                    <div class="glass-card evaluation-logs-card">
+                        <h3><i class="fa-solid fa-history"></i> Detailed Evaluation Logs</h3>
+                        <div class="table-container">
+                            <table class="kb-table eval-table">
+                                <thead>
+                                    <tr>
+                                        <th>Test Query</th>
+                                        <th>Retrieved ID(s)</th>
+                                        <th style="width: 80px; text-align: center;">Retr Acc</th>
+                                        <th style="width: 60px; text-align: center;">Rel</th>
+                                        <th style="width: 60px; text-align: center;">Corr</th>
+                                        <th style="width: 60px; text-align: center;">Comp</th>
+                                        <th>Generated Answer</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="eval-table-body">
+                                    <tr>
+                                        <td colspan="7" class="loading-cell">No evaluation data available. Run a batch evaluation session to display metrics.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modal for feedback notifications -->
+    <div class="toast-container" id="toast-container"></div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
