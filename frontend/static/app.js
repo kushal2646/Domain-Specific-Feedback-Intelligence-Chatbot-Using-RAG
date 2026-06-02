@@ -359,6 +359,7 @@ function appendAssistantBubble(data) {
     let docsHtml = '';
     if (data.retrieved_context && data.retrieved_context.length > 0) {
         data.retrieved_context.forEach((doc, idx) => {
+            const docTags = normalizeTags(doc.tags);
             docsHtml += `
                 <div class="trace-doc-card">
                     <div class="trace-doc-header">
@@ -366,9 +367,9 @@ function appendAssistantBubble(data) {
                         <span class="trace-doc-score">Rel Score: ${doc.relevance_score}</span>
                     </div>
                     <p class="trace-doc-question">Q: ${escapeHtml(doc.question)}</p>
-                    <p class="trace-doc-answer">A: ${escapeHtml(doc.answer)}</p>
+                    <p class="trace-doc-answer">A: ${escapeHtml(doc.answer).replace(/\n/g, '<br>')}</p>
                     <div class="tag-badges mt-2">
-                        ${doc.tags.split(',').map(tag => `<span class="tag-badge" style="font-size:9px;padding:1px 4px;">${escapeHtml(tag.trim())}</span>`).join('')}
+                        ${docTags.map(tag => `<span class="tag-badge" style="font-size:9px;padding:1px 4px;">${escapeHtml(tag.trim())}</span>`).join('')}
                     </div>
                 </div>
             `;
@@ -380,6 +381,9 @@ function appendAssistantBubble(data) {
     bubble.innerHTML = `
         <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
         <div class="msg-bubble">
+            <!-- Bug fix: convert newlines to <br> on raw answer BEFORE escapeHtml,
+                 then trust the result. We use a two-step approach:
+                 escape the text, then replace escaped newlines with <br>. -->
             <p>${escapeHtml(data.answer).replace(/\n/g, '<br>')}</p>
             
             <!-- Expandable RAG metadata panel -->
@@ -472,9 +476,12 @@ async function loadKB() {
         
         let html = '';
         data.records.forEach(rec => {
-            const tagsHtml = rec.tags.split(',')
+            const recTags = normalizeTags(rec.tags);
+            const tagsHtml = recTags
                 .map(t => `<span class="tag-badge">${escapeHtml(t.trim())}</span>`)
                 .join('');
+            
+            const recTagsStr = Array.isArray(rec.tags) ? rec.tags.join(', ') : (rec.tags || '');
                 
             html += `
                 <tr id="kb-row-${rec.id}">
@@ -484,7 +491,7 @@ async function loadKB() {
                     <td><div class="tag-badges">${tagsHtml}</div></td>
                     <td>
                         <div class="actions-cell">
-                            <button class="row-edit-btn" onclick="editKBRecord(${rec.id}, \`${escapeJs(rec.question)}\`, \`${escapeJs(rec.answer)}\`, \`${escapeJs(rec.tags)}\`)" title="Edit Record">
+                            <button class="row-edit-btn" onclick="editKBRecord(${rec.id}, \`${escapeJs(rec.question)}\`, \`${escapeJs(rec.answer)}\`, \`${escapeJs(recTagsStr)}\`)" title="Edit Record">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
                             <button class="row-delete-btn" onclick="deleteKBRecord(${rec.id})" title="Delete Record">
@@ -796,10 +803,16 @@ async function loadStats() {
             // Draw empty charts
             drawCharts({
                 retrieval_accuracy: 0,
+                precision_at_k: 0,
                 precision_k: 0,
+                recall_at_k: 0,
                 recall_k: 0,
+                average_similarity: 0,
+                relevance: 0,
                 answer_relevance: 0,
+                correctness: 0,
                 answer_correctness: 0,
+                completeness: 0,
                 answer_completeness: 0
             });
         }
@@ -811,17 +824,22 @@ async function loadStats() {
 function displayEvalMetrics(m) {
     // Retrieval Metrics
     DOM.metricAccuracy.textContent = `${Math.round(m.retrieval_accuracy * 100)}%`;
-    DOM.metricPrecision.textContent = parseFloat(m.precision_k).toFixed(2);
-    DOM.metricRecall.textContent = `${Math.round(m.recall_k * 100)}%`;
+    const precisionVal = m.precision_at_k !== undefined ? m.precision_at_k : m.precision_k;
+    DOM.metricPrecision.textContent = parseFloat(precisionVal).toFixed(2);
+    const recallVal = m.recall_at_k !== undefined ? m.recall_at_k : m.recall_k;
+    DOM.metricRecall.textContent = `${Math.round(recallVal * 100)}%`;
     
     // Average similarity score
-    const simVal = m.average_similarity !== undefined ? m.average_similarity : 0.65;
+    const simVal = m.average_similarity !== undefined ? m.average_similarity : 0.00;
     DOM.metricSimilarity.textContent = parseFloat(simVal).toFixed(2);
     
     // Generation Quality (scaled to 5.0)
-    DOM.qualityRelevance.textContent = parseFloat(m.answer_relevance).toFixed(1);
-    DOM.qualityCorrectness.textContent = parseFloat(m.answer_correctness).toFixed(1);
-    DOM.qualityCompleteness.textContent = parseFloat(m.answer_completeness).toFixed(1);
+    const relVal = m.relevance !== undefined ? m.relevance : m.answer_relevance;
+    const corrVal = m.correctness !== undefined ? m.correctness : m.answer_correctness;
+    const compVal = m.completeness !== undefined ? m.completeness : m.answer_completeness;
+    DOM.qualityRelevance.textContent = parseFloat(relVal).toFixed(1);
+    DOM.qualityCorrectness.textContent = parseFloat(corrVal).toFixed(1);
+    DOM.qualityCompleteness.textContent = parseFloat(compVal).toFixed(1);
     
     // Redraw charts
     drawCharts(m);
@@ -851,15 +869,19 @@ function displayEvalLogs(details) {
             return 'low';
         };
         
+        const relVal = row.relevance !== undefined ? row.relevance : row.relevance_score;
+        const corrVal = row.correctness !== undefined ? row.correctness : row.correctness_score;
+        const compVal = row.completeness !== undefined ? row.completeness : row.completeness_score;
+        
         html += `
             <tr>
                 <td><strong>${escapeHtml(row.question)}</strong></td>
                 <td><code style="color:var(--text-secondary);font-size:12px;">${retrievedStr}</code></td>
                 <td style="text-align: center;">${accuracyBadge}</td>
-                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(row.relevance)}">${row.relevance.toFixed(0)}</span></td>
-                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(row.correctness)}">${row.correctness.toFixed(0)}</span></td>
-                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(row.completeness)}">${row.completeness.toFixed(0)}</span></td>
-                <td><p style="max-height:60px;overflow-y:auto;font-size:12px;color:var(--text-secondary);">${escapeHtml(row.generated_answer)}</p></td>
+                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(relVal)}">${relVal.toFixed(0)}</span></td>
+                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(corrVal)}">${corrVal.toFixed(0)}</span></td>
+                <td style="text-align: center;"><span class="eval-score-badge ${getScoreClass(compVal)}">${compVal.toFixed(0)}</span></td>
+                <td><p style="max-height:60px;overflow-y:auto;font-size:12px;color:var(--text-secondary);">${escapeHtml(row.generated_answer).replace(/\n/g, '<br>')}</p></td>
             </tr>
         `;
     });
@@ -869,12 +891,12 @@ function displayEvalLogs(details) {
 
 function drawCharts(metrics) {
     const accuracy = metrics.retrieval_accuracy * 100;
-    const precision = metrics.precision_k * 100;
-    const recall = metrics.recall_k * 100;
+    const precision = (metrics.precision_at_k !== undefined ? metrics.precision_at_k : metrics.precision_k) * 100;
+    const recall = (metrics.recall_at_k !== undefined ? metrics.recall_at_k : metrics.recall_k) * 100;
     
-    const rel = metrics.answer_relevance;
-    const corr = metrics.answer_correctness;
-    const comp = metrics.answer_completeness;
+    const rel = metrics.relevance !== undefined ? metrics.relevance : metrics.answer_relevance;
+    const corr = metrics.correctness !== undefined ? metrics.correctness : metrics.answer_correctness;
+    const comp = metrics.completeness !== undefined ? metrics.completeness : metrics.answer_completeness;
     
     // Destroy previous charts if exists to avoid overlap redraw glitch
     if (state.charts.retrieval) state.charts.retrieval.destroy();
@@ -987,4 +1009,14 @@ function escapeJs(str) {
         .replace(/"/g, '\\"')
         .replace(/\n/g, '\\n')
         .replace(/\r/g, '\\r');
+}
+
+function normalizeTags(tags) {
+    if (Array.isArray(tags)) {
+        return tags;
+    }
+    if (typeof tags === 'string') {
+        return tags.split(',');
+    }
+    return [];
 }

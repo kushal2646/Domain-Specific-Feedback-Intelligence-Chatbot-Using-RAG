@@ -62,6 +62,11 @@ class EditRequest(BaseModel):
 
 # API Routes
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint used by Railway for service status monitoring."""
+    return {"status": "healthy"}
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     """
@@ -101,6 +106,9 @@ async def ingest(req: IngestRequest):
         tags = req.tags
         if not tags or not tags.strip():
             tags = generate_tags(req.question, req.answer)
+        
+        # Bug fix: PostgreSQL TEXT[] requires a list, not a comma-separated string
+        tags_list = [t.strip() for t in tags.split(',') if t.strip()]
             
         # 2. Generate embedding
         embedding = get_embedding(req.question)
@@ -112,19 +120,21 @@ async def ingest(req: IngestRequest):
             INSERT INTO feedback_records (question, answer, tags, embedding)
             VALUES (%s, %s, %s, %s)
             RETURNING id, question, answer, tags, created_at;
-        """, (req.question, req.answer, tags, embedding))
+        """, (req.question, req.answer, tags_list, embedding))
         row = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
         
+        # Normalize tags list -> comma-string for consistent JSON response
+        resp_tags = ', '.join(row[3]) if isinstance(row[3], list) else (row[3] or '')
         return {
             "message": "Record ingested successfully.",
             "record": {
                 "id": row[0],
                 "question": row[1],
                 "answer": row[2],
-                "tags": row[3],
+                "tags": resp_tags,
                 "created_at": row[4]
             }
         }
@@ -140,6 +150,9 @@ async def edit_record(rec_id: int, req: EditRequest):
         tags = req.tags
         if not tags or not tags.strip():
             tags = generate_tags(req.question, req.answer)
+        
+        # Bug fix: PostgreSQL TEXT[] requires a list, not a comma-separated string
+        tags_list = [t.strip() for t in tags.split(',') if t.strip()]
             
         # 2. Generate embedding
         embedding = get_embedding(req.question)
@@ -160,19 +173,21 @@ async def edit_record(rec_id: int, req: EditRequest):
             SET question = %s, answer = %s, tags = %s, embedding = %s
             WHERE id = %s
             RETURNING id, question, answer, tags, created_at;
-        """, (req.question, req.answer, tags, embedding, rec_id))
+        """, (req.question, req.answer, tags_list, embedding, rec_id))
         row = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
         
+        # Normalize tags list -> comma-string for consistent JSON response
+        resp_tags = ', '.join(row[3]) if isinstance(row[3], list) else (row[3] or '')
         return {
             "message": "Record updated successfully.",
             "record": {
                 "id": row[0],
                 "question": row[1],
                 "answer": row[2],
-                "tags": row[3],
+                "tags": resp_tags,
                 "created_at": row[4]
             }
         }
@@ -194,7 +209,8 @@ async def delete_record(rec_id: int):
         if not cur.fetchone():
             cur.close()
             conn.close()
-            raise HTTPException(status_code=444, detail="Record not found")
+            # Bug fix: was incorrectly returning 444 (non-standard). Correct code is 404.
+            raise HTTPException(status_code=404, detail="Record not found")
             
         cur.execute("DELETE FROM feedback_records WHERE id = %s;", (rec_id,))
         conn.commit()
@@ -202,6 +218,9 @@ async def delete_record(rec_id: int):
         conn.close()
         
         return {"message": f"Record {rec_id} deleted successfully."}
+    except HTTPException as he:
+        # Re-raise HTTP exceptions (e.g. 404) directly — conn/cur already closed above
+        raise he
     except Exception as e:
         logger.error(f"Error in delete endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -220,18 +239,18 @@ async def list_records(
         offset = (page - 1) * limit
         
         if search and search.strip():
-            # Search question or tags
+            # Bug fix: tags is TEXT[] -- use array_to_string() for ILIKE compatibility
             search_param = f"%{search.strip()}%"
             cur.execute("""
                 SELECT COUNT(*) FROM feedback_records
-                WHERE question ILIKE %s OR tags ILIKE %s;
+                WHERE question ILIKE %s OR array_to_string(tags, ', ') ILIKE %s;
             """, (search_param, search_param))
             total_records = cur.fetchone()[0]
             
             cur.execute("""
                 SELECT id, question, answer, tags, created_at 
                 FROM feedback_records
-                WHERE question ILIKE %s OR tags ILIKE %s
+                WHERE question ILIKE %s OR array_to_string(tags, ', ') ILIKE %s
                 ORDER BY id DESC
                 LIMIT %s OFFSET %s;
             """, (search_param, search_param, limit, offset))
@@ -252,11 +271,13 @@ async def list_records(
         
         records = []
         for r in rows:
+            # Normalize tags: psycopg2 returns TEXT[] as list; convert to string for frontend
+            tags_val = ', '.join(r[3]) if isinstance(r[3], list) else (r[3] or '')
             records.append({
                 "id": r[0],
                 "question": r[1],
                 "answer": r[2],
-                "tags": r[3],
+                "tags": tags_val,
                 "created_at": r[4]
             })
             
@@ -297,14 +318,15 @@ async def seed_database():
                 skipped_count += 1
                 continue
                 
-            # 1. Generate tags (we add a sleep or fallback to avoid hitting Groq rate limits)
-            # Since generating 100 tags sequentially via Groq might take some time, we will use
-            # local tag generation if Groq fails or rate limits, ensuring smooth completion.
+            # 1. Generate tags (fallback to local tags if Groq fails or rate-limits)
             try:
                 tags = generate_tags(question, answer)
             except Exception as tags_err:
                 logger.warning(f"Failed to generate tags for row {idx}: {tags_err}")
                 tags = "seeding, feedback, support"
+            
+            # Bug fix: convert comma-string to list for TEXT[] column
+            tags_list = [t.strip() for t in tags.split(',') if t.strip()]
                 
             # 2. Generate embedding
             try:
@@ -317,7 +339,7 @@ async def seed_database():
             cur.execute("""
                 INSERT INTO feedback_records (question, answer, tags, embedding)
                 VALUES (%s, %s, %s, %s);
-            """, (question, answer, tags, embedding))
+            """, (question, answer, tags_list, embedding))
             seeded_count += 1
             
             # Commit periodically
@@ -365,15 +387,19 @@ async def upload_csv(file: UploadFile = File(...)):
             if not question or not answer:
                 continue
                 
-            # Generate tags
-            tags = generate_tags(question, answer)
+            # Generate or extract tags
+            tags = row.get("tags")
+            if not tags or not tags.strip():
+                tags = generate_tags(question, answer)
+            # Bug fix: convert comma-string to list for TEXT[] column
+            tags_list = [t.strip() for t in tags.split(',') if t.strip()]
             # Generate embedding
             embedding = get_embedding(question)
             
             cur.execute("""
                 INSERT INTO feedback_records (question, answer, tags, embedding)
                 VALUES (%s, %s, %s, %s);
-            """, (question, answer, tags, embedding))
+            """, (question, answer, tags_list, embedding))
             inserted_count += 1
             
         conn.commit()
@@ -403,6 +429,16 @@ async def run_evaluation(top_k: int = Query(3, ge=1, le=10)):
 @app.get("/api/evaluation/stats")
 async def evaluation_stats():
     """Gets historical evaluation statistics."""
+    try:
+        stats = get_historical_evaluation_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error fetching evaluation stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/evaluation")
+async def evaluation_stats_alias():
+    """Alias for getting historical evaluation stats to satisfy GET /api/evaluation."""
     try:
         stats = get_historical_evaluation_stats()
         return stats

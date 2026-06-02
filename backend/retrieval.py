@@ -70,7 +70,8 @@ def hybrid_search(query: str, top_k: int = 5, semantic_weight: float = 0.5, text
             
             for term in search_terms:
                 q_conditions.append("question ILIKE %s")
-                t_conditions.append("tags ILIKE %s")
+                # Bug fix: tags is TEXT[] -- must cast to text for ILIKE
+                t_conditions.append("array_to_string(tags, ', ') ILIKE %s")
                 # Wrap with wildcards
                 params.append(f"%{term}%")
                 
@@ -119,9 +120,14 @@ def hybrid_search(query: str, top_k: int = 5, semantic_weight: float = 0.5, text
             text_score = text_matches / len(search_terms) if search_terms else 0.0
             
             # 3. Tag score (percentage of search terms found in tags)
+            # Bug fix: psycopg2 returns TEXT[] as a Python list; handle both list and str
+            if isinstance(tags, list):
+                tags_text = ", ".join(tags).lower()
+            else:
+                tags_text = str(tags).lower()
             tag_matches = 0
             for term in search_terms:
-                if term in tags.lower():
+                if term in tags_text:
                     tag_matches += 1
             tag_score = tag_matches / len(search_terms) if search_terms else 0.0
             
@@ -136,7 +142,8 @@ def hybrid_search(query: str, top_k: int = 5, semantic_weight: float = 0.5, text
                 "id": rec_id,
                 "question": question,
                 "answer": answer,
-                "tags": tags,
+                # Normalize tags: always return as comma-separated string for JSON
+                "tags": ', '.join(tags) if isinstance(tags, list) else (tags or ''),
                 "semantic_score": round(semantic_score, 4),
                 "text_score": round(text_score, 4),
                 "tag_score": round(tag_score, 4),

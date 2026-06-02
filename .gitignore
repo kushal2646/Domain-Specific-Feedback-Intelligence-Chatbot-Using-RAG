@@ -1,10 +1,11 @@
 .env
-__pycache__/
+**pycache__/
 *.pyc
+.venv/
+venv/
+env/
 .vscode/
 .idea/
 .gemini/
-venv/
-env/
 .DS_Store
 *.log

@@ -156,12 +156,12 @@ def run_evaluation_batch(top_k: int = 3) -> dict:
             cur.execute("""
                 INSERT INTO evaluation_logs 
                 (question, generated_answer, ground_truth_answer, retrieved_record_ids, 
-                 retrieved_accuracy, precision_k, recall_k, relevance_score, 
+                 retrieved_accuracy, precision_k, recall_k, average_similarity, relevance_score, 
                  correctness_score, completeness_score, evaluation_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'automated')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'automated')
                 RETURNING id;
             """, (test_query, generated_ans, gt_answer, retrieved_ids, 
-                  retrieved_accuracy, precision_k, recall_k, relevance, 
+                  retrieved_accuracy, precision_k, recall_k, avg_sim, relevance, 
                   correctness, completeness))
             conn.commit()
         except Exception as e:
@@ -187,10 +187,13 @@ def run_evaluation_batch(top_k: int = 3) -> dict:
             "retrieved_ids": retrieved_ids,
             "retrieved_accuracy": retrieved_accuracy,
             "precision_k": precision_k,
+            "precision_at_k": precision_k,
             "recall_k": recall_k,
+            "recall_at_k": recall_k,
             "relevance": relevance,
             "correctness": correctness,
             "completeness": completeness,
+            "average_similarity": round(avg_sim, 4),
             "avg_similarity": round(avg_sim, 4)
         })
         
@@ -201,8 +204,14 @@ def run_evaluation_batch(top_k: int = 3) -> dict:
         "retrieved_count": valid_evals,
         "retrieval_accuracy": round(total_accuracy / valid_evals, 4) if valid_evals else 0.0,
         "precision_k": round(total_precision / valid_evals, 4) if valid_evals else 0.0,
+        "precision_at_k": round(total_precision / valid_evals, 4) if valid_evals else 0.0,
         "recall_k": round(total_recall / valid_evals, 4) if valid_evals else 0.0,
+        "recall_at_k": round(total_recall / valid_evals, 4) if valid_evals else 0.0,
         "average_similarity": round(total_similarity / valid_evals, 4) if valid_evals else 0.0,
+        "relevance": round(total_relevance / valid_evals, 4) if valid_evals else 0.0,
+        "correctness": round(total_correctness / valid_evals, 4) if valid_evals else 0.0,
+        "completeness": round(total_completeness / valid_evals, 4) if valid_evals else 0.0,
+        # Retain old keys for compatibility
         "answer_relevance": round(total_relevance / valid_evals, 4) if valid_evals else 0.0,
         "answer_correctness": round(total_correctness / valid_evals, 4) if valid_evals else 0.0,
         "answer_completeness": round(total_completeness / valid_evals, 4) if valid_evals else 0.0
@@ -213,7 +222,7 @@ def run_evaluation_batch(top_k: int = 3) -> dict:
         "summary": avg_metrics,
         "details": results
     }
-
+ 
 def get_historical_evaluation_stats() -> dict:
     """Retrieves aggregated evaluation logs stats from database."""
     conn = get_db_connection()
@@ -226,6 +235,7 @@ def get_historical_evaluation_stats() -> dict:
                 AVG(retrieved_accuracy) as avg_accuracy,
                 AVG(precision_k) as avg_precision,
                 AVG(recall_k) as avg_recall,
+                AVG(average_similarity) as avg_similarity,
                 AVG(relevance_score) as avg_relevance,
                 AVG(correctness_score) as avg_correctness,
                 AVG(completeness_score) as avg_completeness
@@ -236,16 +246,30 @@ def get_historical_evaluation_stats() -> dict:
             stats = {
                 "total_runs": row[0],
                 "retrieval_accuracy": round(float(row[1]), 4) if row[1] is not None else 0.0,
+                "precision_at_k": round(float(row[2]), 4) if row[2] is not None else 0.0,
+                "recall_at_k": round(float(row[3]), 4) if row[3] is not None else 0.0,
+                "average_similarity": round(float(row[4]), 4) if row[4] is not None else 0.0,
+                "relevance": round(float(row[5]), 4) if row[5] is not None else 0.0,
+                "correctness": round(float(row[6]), 4) if row[6] is not None else 0.0,
+                "completeness": round(float(row[7]), 4) if row[7] is not None else 0.0,
+                # Retain old keys for safety
                 "precision_k": round(float(row[2]), 4) if row[2] is not None else 0.0,
                 "recall_k": round(float(row[3]), 4) if row[3] is not None else 0.0,
-                "answer_relevance": round(float(row[4]), 4) if row[4] is not None else 0.0,
-                "answer_correctness": round(float(row[5]), 4) if row[5] is not None else 0.0,
-                "answer_completeness": round(float(row[6]), 4) if row[6] is not None else 0.0
+                "answer_relevance": round(float(row[5]), 4) if row[5] is not None else 0.0,
+                "answer_correctness": round(float(row[6]), 4) if row[6] is not None else 0.0,
+                "answer_completeness": round(float(row[7]), 4) if row[7] is not None else 0.0
             }
         else:
             stats = {
                 "total_runs": 0,
                 "retrieval_accuracy": 0.0,
+                "precision_at_k": 0.0,
+                "recall_at_k": 0.0,
+                "average_similarity": 0.0,
+                "relevance": 0.0,
+                "correctness": 0.0,
+                "completeness": 0.0,
+                # Retain old keys for safety
                 "precision_k": 0.0,
                 "recall_k": 0.0,
                 "answer_relevance": 0.0,

@@ -21,22 +21,28 @@ if not GROQ_API_KEY:
     logger.warning("GROQ_API_KEY environment variable is not set. Groq features will fail.")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# Initialize local SentenceTransformer embedding model
-logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME}...")
-try:
-    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    logger.info("Embedding model loaded successfully.")
-except Exception as e:
-    logger.error(f"Failed to load embedding model: {e}")
-    embedding_model = None
+# Initialize local SentenceTransformer embedding model (lazy loading)
+embedding_model = None
+
+def get_embedding_model():
+    """Helper to lazily load and return the SentenceTransformer model."""
+    global embedding_model
+    if embedding_model is None:
+        logger.info(f"Lazily loading embedding model: {EMBEDDING_MODEL_NAME}...")
+        try:
+            embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+            logger.info("Embedding model loaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {e}")
+            raise e
+    return embedding_model
 
 def get_embedding(text: str) -> list[float]:
     """Generates a 384-dimensional vector embedding for the input text."""
-    if not embedding_model:
-        raise ValueError("Embedding model is not loaded.")
+    model = get_embedding_model()
     # Standardize string formatting
     cleaned_text = text.strip().replace("\n", " ")
-    embedding = embedding_model.encode(cleaned_text)
+    embedding = model.encode(cleaned_text)
     return embedding.tolist()
 
 def generate_tags(question: str, answer: str) -> str:

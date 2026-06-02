@@ -643,10 +643,24 @@ body {
     font-weight: 700;
 }
 
+.trace-doc-question {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 12px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
 .trace-doc-answer {
     color: var(--text-secondary);
     line-height: 1.4;
     white-space: pre-line;
+    font-size: 12px;
+}
+
+/* Utility margin class used by tag badge wrappers in RAG trace */
+.mt-2 {
+    margin-top: 8px;
 }
 
 /* Chat Input Bar */
@@ -1480,4 +1494,120 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(6, 182, 212, 0.3);
+}
+
+/* Trace Document Question Style */
+.trace-doc-question {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+/* Tablet & Responsive Breakpoints (max-width: 1024px) */
+@media (max-width: 1024px) {
+    .chat-layout {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        overflow-y: auto;
+    }
+    .chat-settings-sidebar {
+        max-height: none;
+    }
+    .admin-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    .quality-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    .charts-row {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+/* Mobile Breakpoints (max-width: 768px) */
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding: 12px 16px;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .logo-area {
+        padding: 0;
+        padding-bottom: 0 !important;
+    }
+    .nav-menu {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 4px;
+        flex-grow: 0;
+    }
+    .nav-btn {
+        padding: 6px 10px;
+        font-size: 13px;
+        gap: 6px;
+    }
+    .nav-btn i {
+        font-size: 14px;
+        width: 16px;
+    }
+    .sidebar-footer {
+        display: none;
+    }
+    .main-content {
+        height: calc(100vh - 70px);
+    }
+    .app-header {
+        height: auto;
+        padding: 16px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .header-actions {
+        justify-content: space-between;
+    }
+    .view-container {
+        padding: 16px;
+    }
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    .quality-grid {
+        grid-template-columns: 1fr;
+    }
+    .kb-actions-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .search-box {
+        width: 100%;
+    }
+    .table-container {
+        overflow-x: auto;
+    }
+    .kb-table th, .kb-table td {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+    .message {
+        max-width: 95%;
+    }
 }

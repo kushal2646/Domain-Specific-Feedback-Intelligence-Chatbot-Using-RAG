@@ -1,111 +1,238 @@
-# Design and Development of a Domain-Specific Feedback Intelligence RAG Chatbot Using Groq LLM, Neon PostgreSQL, and Semantic Search
+# 🧠 Domain-Specific Feedback Intelligence RAG Chatbot
 
-An advanced, production-ready, domain-specific RAG (Retrieval-Augmented Generation) Chatbot designed to process, search, and analyze customer feedback records. Powered by Groq's Llama 3 LLM, Neon PostgreSQL (with `pgvector` for semantic search), and a local Sentence-Transformers embedding model.
-
----
-
-## 🚀 Key Features
-
-* **Hybrid Retrieval System**: Combines pgvector Cosine Distance semantic similarity (50% weight), question keyword index search (30% weight), and tag keyword search (20% weight) with customizable parameter tuning.
-* **Automatic Content Tagging**: Analyzes question-answer inputs upon ingestion and uses Groq Llama 3 to generate 4-8 lowercase descriptive tags representing topics, intents, and technical terms.
-* **LLM-as-a-Judge Evaluation Dashboard**: Automatically benchmarks RAG response quality (Relevance, Correctness, Completeness) on a scale of 1-5 using Llama 3 as an objective judge, side-by-side with standard search metrics (Retrieval Accuracy, Precision@K, Recall@K).
-* **SPA Dashboard Interface**: Built with raw HTML5, CSS3, and JavaScript, featuring a premium glassmorphic dark theme, active RAG trace inspectors, knowledge base editor grid, and interactive Chart.js analytics.
-* **Streamlit Dashboard**: Includes a complete `streamlit_app.py` for direct deployment compatibility with Streamlit Cloud.
+A **production-ready, enterprise-grade** Retrieval-Augmented Generation (RAG) chatbot that automates customer support feedback analysis using a verified Feedback Knowledge Base. Built with Groq Llama 3, Neon PostgreSQL, pgvector, and deployed on Railway.
 
 ---
 
-## 🛠️ Technology Stack
+## 🏗️ Architecture Overview
 
-* **Frontend**: HTML5, Vanilla CSS3 (Glassmorphism, Dark Theme, HSL Color System), Vanilla JavaScript, Chart.js
-* **Backend**: FastAPI (Python), Uvicorn Server
-* **Database**: Neon PostgreSQL (Serverless)
-* **Vector Engine**: `pgvector` (384-dimensional cosine metrics)
-* **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (Local generation)
-* **LLM**: Groq Cloud API (`llama-3.3-70b-versatile`)
+```mermaid
+graph TD
+    User([User Question]) --> ChatRoute[FastAPI /api/chat]
+    ChatRoute --> ExtTerms[Extract Search Terms <br> Groq Llama 3]
+    ChatRoute --> Embed[Generate Embedding <br> MiniLM-L6-v2]
+    
+    ExtTerms --> TextSearch[Question Text Search <br> ILIKE]
+    ExtTerms --> TagSearch[Tag Array Search <br> array_to_string ILIKE]
+    Embed --> SemanticSearch[Semantic Vector Search <br> pgvector Cosine]
+    
+    TextSearch --> Merge[Merge & Rerank <br> Weighted Score]
+    TagSearch --> Merge
+    SemanticSearch --> Merge
+    
+    Merge --> Filter[Relevance Threshold Filter]
+    Filter --> Synth[Answer Synthesis <br> Groq Llama 3]
+    Synth --> Response([Final Synthesized Answer])
+```
 
 ---
 
-## 📂 Project Architecture
+## 🔧 Tech Stack
 
-```text
+| Layer | Technology | Description |
+|---|---|---|
+| **Frontend** | HTML5, Vanilla CSS, JavaScript SPA | Dark glassmorphism, responsive interface. |
+| **Backend** | FastAPI (Python) | High-performance asynchronous API framework. |
+| **Database** | Neon PostgreSQL | Serverless cloud PostgreSQL database. |
+| **Vector Search** | pgvector extension | Custom indices for multidimensional vector search. |
+| **Embeddings** | `all-MiniLM-L6-v2` | local 384-dimensional vector embedding model. |
+| **LLM Inference** | Groq Cloud API | Llama 3.3-70b-versatile for fast synthesis. |
+| **Deployment** | Railway | Continuous deployment using NIXPACKS build system. |
+
+---
+
+## 📁 Project Structure
+
+```
 ├── backend/
-│   ├── database.py      # PostgreSQL connections & DDL tables init
-│   ├── llm.py           # Groq client integration & embedding generation
-│   ├── retrieval.py     # Hybrid search fusion ranking algorithm
-│   ├── evaluator.py     # Batch evaluation & LLM-as-a-judge scoring
-│   ├── seed_data.py     # 100+ default QA feedback records list
-│   └── main.py          # FastAPI application server & routing
+│   ├── __init__.py          # Python package marker
+│   ├── main.py              # FastAPI app & all API routes
+│   ├── database.py          # PostgreSQL init & connection
+│   ├── llm.py               # Groq tag generation, embeddings, synthesis
+│   ├── retrieval.py         # Hybrid search logic
+│   ├── evaluator.py         # Batch evaluation + LLM Judge
+│   └── seed_data.py         # 100 Q&A seed records
 ├── frontend/
 │   └── static/
-│       ├── index.html   # Main Dashboard SPA UI
-│       ├── style.css    # Premium glassmorphic stylesheets
-│       └── app.js       # Client state, event bindings & charts
-├── requirements.txt     # Python package dependencies
-├── render.yaml          # Render blueprint for one-click web deploy
-├── streamlit_app.py     # Streamlit app script for Streamlit Cloud
-└── .gitignore           # Ignored folders and local secrets (.env)
+│       ├── index.html       # Single-page app (4 views)
+│       ├── style.css        # Dark glassmorphism theme with media queries
+│       └── app.js           # All frontend logic
+├── .env                     # Local env vars (not committed)
+├── .gitignore
+├── railway.json             # Railway deployment config
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## ⚙️ Local Setup Instructions
+## 🗄️ Database Schema
 
-### 1. Prerequisite Installations
-Ensure you have **Python 3.10+** and **Pip** installed on your system.
+```sql
+-- Enable pgvector
+CREATE EXTENSION IF NOT EXISTS vector;
 
-### 2. Clone the Repository
-```bash
-git clone https://github.com/kushal2646/Domain-Specific-Feedback-Intelligence-Chatbot-Using-RAG.git
-cd Domain-Specific-Feedback-Intelligence-Chatbot-Using-RAG
+-- Main knowledge base table
+CREATE TABLE feedback_records (
+    id          SERIAL PRIMARY KEY,
+    question    TEXT NOT NULL,
+    answer      TEXT NOT NULL,
+    tags        TEXT[],                      -- Array of auto-generated tags
+    embedding   VECTOR(384),                 -- all-MiniLM-L6-v2 embedding
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Evaluation logs
+CREATE TABLE evaluation_logs (
+    id                   SERIAL PRIMARY KEY,
+    question             TEXT NOT NULL,
+    generated_answer     TEXT NOT NULL,
+    ground_truth_answer  TEXT,
+    retrieved_record_ids INTEGER[],
+    retrieved_accuracy   FLOAT DEFAULT 0.0,
+    precision_k          FLOAT DEFAULT 0.0,
+    recall_k             FLOAT DEFAULT 0.0,
+    average_similarity   FLOAT DEFAULT 0.0,
+    relevance_score      FLOAT DEFAULT 0.0,
+    correctness_score    FLOAT DEFAULT 0.0,
+    completeness_score   FLOAT DEFAULT 0.0,
+    evaluation_type      VARCHAR(50) DEFAULT 'automated',
+    feedback_rating      INTEGER DEFAULT 0,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-### 3. Install Dependencies
+---
+
+## 🔧 Setup Instructions
+
+### 1. Prerequisites
+
+* Python 3.10+
+* Git
+* A serverless PostgreSQL instance (Neon)
+* A Groq developer account
+
+### 2. Clone & Install
+
 ```bash
+git clone <your-repo-url>
+cd "Domain-Specific Feedback Intelligence Chatbot Using RAG"
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # macOS/Linux
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Secrets
-Create a `.env` file in the root directory and input your credentials:
-```env
-GROQ_API_KEY=your_groq_api_key_here
-NEON_DATABASE_URL=postgresql://your_neon_db_connection_url_here?sslmode=require
-GROQ_MODEL=llama-3.3-70b-versatile
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-EMBEDDING_DIMENSION=384
-```
+### 3. Run the Server
 
-### 5. Launch the Server
-Start the FastAPI server:
 ```bash
-python -m backend.main
-```
-Open **[http://localhost:8000](http://localhost:8000)** in your browser to interact with the dashboard.
-
-*To run the Streamlit version instead:*
-```bash
-streamlit run streamlit_app.py
+python -m uvicorn backend.main:app --port 8000 --reload
 ```
 
 ---
 
-## 🚀 Deployment Instructions
+## 🔑 Environment Variables
 
-### Option A: Render (FastAPI Server + Frontend)
-This project includes a **[render.yaml](render.yaml)** Blueprint. 
-1. Log in to [Render](https://dashboard.render.com/) and connect your GitHub account.
-2. Select **Blueprint** (Infrastructure as Code).
-3. Connect your repository and supply the required secrets (`GROQ_API_KEY`, `NEON_DATABASE_URL`).
-4. Click **Approve**. Render will deploy your service automatically.
+Create a `.env` file in the project root:
 
-### Option B: Streamlit Cloud (Streamlit Dashboard)
-1. Log in to [Streamlit Community Cloud](https://share.streamlit.io/).
-2. Create a new app linked to your GitHub repo, pointing the main file path to `streamlit_app.py`.
-3. Open **Advanced Settings** and add your environment secrets under the **Secrets** textarea in TOML format:
-   ```toml
-   GROQ_API_KEY = "gsk_..."
-   NEON_DATABASE_URL = "postgresql://..."
-   GROQ_MODEL = "llama-3.3-70b-versatile"
-   EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-   EMBEDDING_DIMENSION = 384
+```env
+GROQ_API_KEY=gsk_your_groq_key_here
+NEON_DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+GROQ_MODEL=llama-3.3-70b-versatile
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+---
+
+## ⚡ Neon PostgreSQL Setup
+
+1. Go to [Neon console](https://console.neon.tech/) and create a new project.
+2. Select your preferred AWS region and configure database sizing.
+3. Retrieve your connection string `postgresql://...` from the Neon dashboard. Ensure `sslmode=require` is appended.
+4. Run `init_db()` locally or trigger `/api/seed` to automatically enable `pgvector` and construct all tables and schema indices.
+
+---
+
+## 🤖 Groq Setup
+
+1. Sign up on [Groq Console](https://console.groq.com/).
+2. Create an API Key in the **API Keys** section.
+3. Copy the key to your `.env` as `GROQ_API_KEY`.
+4. The system is preset to use `llama-3.3-70b-versatile` for synthesis and query parsing, which offers high speed and context understanding.
+
+---
+
+## 🚂 Railway Deployment
+
+1. Create a **New Project** on [Railway](https://railway.app/).
+2. Click **Deploy from GitHub repo** and connect your repository.
+3. Add the following **Variables** in your project settings:
+   * `GROQ_API_KEY`
+   * `NEON_DATABASE_URL`
+   * `GROQ_MODEL` (e.g., `llama-3.3-70b-versatile`)
+   * `EMBEDDING_MODEL` (`sentence-transformers/all-MiniLM-L6-v2`)
+4. Railway automatically detects the `railway.json` file and builds the Nixpacks container:
+   ```json
+   {
+     "$schema": "https://railway.app/railway.schema.json",
+     "build": { "builder": "NIXPACKS" },
+     "deploy": {
+       "startCommand": "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+     }
+   }
    ```
-4. Click **Deploy**.
+5. Deployments trigger automatically on every branch push.
+
+---
+
+## 🔌 API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Health check - returns `{"status": "healthy"}` |
+| `POST` | `/api/chat` | RAG chat - hybrid retrieval + answer synthesis |
+| `GET` | `/api/kb` | List knowledge base (paginated, searchable) |
+| `POST` | `/api/ingest` | Add a single Q&A record |
+| `PUT` | `/api/kb/{id}` | Edit a record |
+| `DELETE` | `/api/kb/{id}` | Delete a record |
+| `POST` | `/api/seed` | Seed 100+ default records |
+| `POST` | `/api/upload` | Upload CSV of Q&A pairs |
+| `POST` | `/api/reset` | Wipe all tables |
+| `POST` | `/api/evaluation/run` | Run batch evaluation (LLM Judge) |
+| `GET` | `/api/evaluation/stats` | Get historical evaluation stats |
+| `GET` | `/api/evaluation` | Alias for getting historical evaluation stats |
+
+---
+
+## 📊 Evaluation Metrics
+
+| Metric | Code Key | Description |
+|---|---|---|
+| **Retrieval Accuracy** | `retrieval_accuracy` | % of queries where the target document was retrieved. |
+| **Precision @ K** | `precision_at_k` | Fraction of retrieved documents that are relevant. |
+| **Recall @ K** | `recall_at_k` | Fraction of relevant documents successfully retrieved. |
+| **Avg Similarity** | `average_similarity` | Mean cosine similarity of context documents. |
+| **Answer Relevance** | `relevance` | LLM Judge score 1–5: evaluates if answer is on-topic. |
+| **Answer Correctness** | `correctness` | LLM Judge score 1–5: checks factual alignment with database. |
+| **Answer Completeness** | `completeness` | LLM Judge score 1–5: check details covered. |
+
+---
+
+## 📸 Screenshots Section
+
+### 1. Intelligence Chat Screen
+Offers custom parameters (Top K, Similarity threshold, semantic/text/tag weights) with interactive chat logs and an accordion trace panel detailing the RAG pipeline execution (search terms generated, matched records with scores and tags).
+
+### 2. Feedback Knowledge Base Screen
+A clean paginated tabular representation of all customer QA records in the database. Supports inline tag badges, text searching on tags/questions, and quick editing or deletion.
+
+### 3. Administration & Ingestion Screen
+Provides interfaces to add QA records individually, import files via drag-and-drop CSV uploads, seed default dataset, or wipe the PostgreSQL database.
+
+### 4. Evaluation Dashboard Screen
+Consolidates system performance metrics with radar and bar charts powered by Chart.js, rendering retrieval success and LLM Judge quality scores along with tabular details of evaluation runs.
